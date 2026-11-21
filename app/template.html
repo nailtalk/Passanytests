@@ -40,6 +40,12 @@ h1{font:700 1.7rem/1.1 var(--font-display);margin:0;letter-spacing:-.01em;text-w
 .stat.learn{border-top-color:var(--warn)}
 .stat.new{border-top-color:var(--fig-b)}
 .stat.known{border-top-color:var(--good)}
+.pace{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.pace-label{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{appearance:none;border:1.5px solid var(--line);background:var(--surface);color:var(--fg);border-radius:99px;padding:6px 14px;font:500 .85rem var(--font-mono);font-variant-numeric:tabular-nums;cursor:pointer}
+.seg button:hover{border-color:var(--accent)}
+.seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 nav{display:flex;gap:4px;border-bottom:1px solid var(--line)}
 nav button{flex:1;background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:10px 4px;font:600 .9rem var(--font-body);color:var(--muted);cursor:pointer}
 nav button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
@@ -110,6 +116,11 @@ section{display:flex;flex-direction:column;gap:14px}
     <div class="stat known"><b id="sKnown">0</b><span>Learned</span></div>
   </div>
 
+  <div class="pace">
+    <span class="pace-label" id="paceLabel">New cards per day</span>
+    <div class="seg" id="pace" role="group" aria-labelledby="paceLabel"></div>
+  </div>
+
   <nav role="tablist">
     <button id="tStudy" role="tab" aria-selected="true" data-tab="study">Study</button>
     <button id="tBrowse" role="tab" aria-selected="false" data-tab="browse">All cards</button>
@@ -142,7 +153,8 @@ section{display:flex;flex-direction:column;gap:14px}
 
   <section id="settings" hidden>
     <label for="newPerDay">New cards per day
-      <input type="number" id="newPerDay" min="1" max="200" step="1">
+      <input type="number" id="newPerDay" min="1" max="9999" step="1">
+      <span class="hint">Or tap 10, 25, 50, 100 or All above the cards. Type any number here for a custom amount.</span>
     </label>
     <div class="card" style="gap:8px">
       <strong>How cards come back</strong>
@@ -164,7 +176,7 @@ section{display:flex;flex-direction:column;gap:14px}
 
 <script>
 const BASE = /*__CARDS__*/[];
-const MIN = 60e3, DAY = 864e5;
+const MIN = 60e3, DAY = 864e5, ALL = 9999;
 const LS = "cos-deck-v1";
 let state = {p:{}, newDay:{d:"",n:0}, newPerDay:25, custom:[]};
 let db=null, progRef=null, deckRef=null, writing=Promise.resolve();
@@ -256,7 +268,23 @@ const $=id=>document.getElementById(id);
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 
+const PACES=[10,25,50,100,0]; // 0 = all cards
+function renderPace(){
+  $("pace").innerHTML=PACES.map(v=>{const val=v||ALL; return `<button data-v="${val}" aria-pressed="${state.newPerDay===val}">${v||"All"}</button>`;}).join("")
+    +(PACES.some(v=>(v||ALL)===state.newPerDay)?"":`<button aria-pressed="true" disabled>${state.newPerDay}</button>`);
+  $("pace").querySelectorAll("button[data-v]").forEach(b=>b.onclick=()=>setPace(+b.dataset.v));
+}
+function setPace(v){
+  state.newPerDay=v; save(); renderPace(); refresh();
+  toast(v>=ALL?"New cards per day: all":"New cards per day: "+v);
+}
+function moreToday(n){
+  if(state.newDay.d!==today()) state.newDay={d:today(),n:0};
+  state.newDay.n-=n; save(); refresh(); toast("Added "+n+" more new cards for today");
+}
+
 function refresh(){
+  renderPace();
   const c=counts();
   $("sDue").textContent=c.due; $("sLearn").textContent=c.learn; $("sNew").textContent=c.newToday; $("sKnown").textContent=c.known;
   if(!answered) renderStudy();
@@ -269,10 +297,14 @@ function renderStudy(){
   if(!current){
     const s=soonest(), wait=s-Date.now();
     const soon = isFinite(s) && wait<60*MIN;
+    const unseen = allCards().filter(c=>!rec(c.id)).length;
     el.innerHTML=`<div class="card empty"><h2>${soon?"Next card coming up":"You're done for now"}</h2>
       ${soon?`<div class="countdown" id="cd"></div><p class="hint">A card you missed comes back when the timer runs out.</p>`
-            :`<p class="hint">${isFinite(s)?"Next review in "+fmtIn(wait)+".":""} New cards for today are used up. You can raise the daily limit in Settings.</p>`}
-      <button class="btn ghost small" id="ahead">Study one card ahead of schedule</button></div>`;
+            :`<p class="hint">${isFinite(s)?"Next review in "+fmtIn(wait)+".":""} ${unseen?"You've used today's new cards.":"You've seen every card in the deck."}</p>`}
+      <div class="row" style="justify-content:center">
+        ${unseen?`<button class="btn small" id="more">Learn ${Math.min(10,unseen)} more new cards</button>`:""}
+        <button class="btn ghost small" id="ahead">Study one card ahead of schedule</button></div></div>`;
+    if(unseen) $("more").onclick=()=>moreToday(Math.min(10,unseen));
     $("ahead").onclick=()=>{const c=allCards().filter(c=>rec(c.id)).sort((a,b)=>rec(a.id)[0]-rec(b.id)[0])[0]||allCards().find(c=>!rec(c.id)); if(c) showCard(c);};
     if(soon){const tick=()=>{const w=s-Date.now(); if(w<=0){refresh();return;} const t=Math.ceil(w/1000); $("cd").textContent=Math.floor(t/60)+":"+String(t%60).padStart(2,"0");}; tick(); tickTimer=setInterval(tick,1000);}
     return;
@@ -364,7 +396,7 @@ $("impBtn").onclick=()=>{doImport($("imp").value); if(!/^No/.test($("impMsg").te
 $("impFile").onchange=e=>{const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>doImport(r.result); r.readAsText(f); e.target.value="";};
 
 /* ---------- settings ---------- */
-$("newPerDay").onchange=e=>{const v=Math.max(1,Math.min(200,parseInt(e.target.value)||25)); state.newPerDay=v; e.target.value=v; save(); refresh(); toast("New cards per day: "+v);};
+$("newPerDay").onchange=e=>{const v=Math.max(1,Math.min(ALL,parseInt(e.target.value)||25)); e.target.value=v; setPace(v);};
 $("resetBtn").onclick=()=>{$("resetConfirm").hidden=false;$("resetBtn").hidden=true;};
 $("resetNo").onclick=()=>{$("resetConfirm").hidden=true;$("resetBtn").hidden=false;};
 $("resetYes").onclick=()=>{state.p={}; state.newDay={d:"",n:0}; save(); $("resetNo").click(); refresh(); toast("Progress reset");};
