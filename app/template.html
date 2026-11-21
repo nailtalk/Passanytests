@@ -95,6 +95,24 @@ textarea{min-height:150px;font:13px/1.5 var(--font-mono);resize:vertical}
 label{font-weight:600;font-size:.9rem;display:flex;flex-direction:column;gap:6px}
 .hint{font-size:.83rem;color:var(--muted);margin:0}
 code{font:13px var(--font-mono);background:var(--accent-soft);padding:1px 5px;border-radius:4px}
+.qrow{display:flex;gap:10px;align-items:flex-start}
+.qrow .q{flex:1;min-width:0}
+.spk{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1.5px solid var(--line);background:var(--surface);color:var(--accent);border-radius:99px;cursor:pointer;font:600 .8rem var(--font-body)}
+.spk.round{width:38px;height:38px}
+.spk svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.spk:hover{border-color:var(--accent)}
+.spk[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+body.nospeech .spk{display:none}
+.say{display:flex;flex-direction:column;gap:6px}
+.say-h{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.terms{display:flex;flex-wrap:wrap;gap:6px}
+.term{display:inline-flex;align-items:baseline;gap:8px;padding:6px 12px 6px 8px;border-radius:10px;border:1px solid var(--line);background:var(--accent-soft);color:var(--fg);font:500 .9rem var(--font-body);cursor:pointer;text-align:left}
+.term svg{width:15px;height:15px;align-self:center;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.term b{font-weight:600}
+.term .ph{font:500 .78rem var(--font-mono);color:var(--accent);letter-spacing:.02em}
+.term[aria-pressed="true"]{border-color:var(--accent)}
+body.nospeech .term{cursor:default}
+body.nospeech .term svg{display:none}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:99px;font-weight:600;font-size:.9rem;max-width:calc(100% - 32px)}
 .sync{font:500 .72rem var(--font-mono);color:var(--muted)}
 section{display:flex;flex-direction:column;gap:14px}
@@ -314,16 +332,24 @@ function renderStudy(){
 
 function showCard(card){
   current=card; answered=false; clearInterval(tickTimer);
+  if(speakingBtn) stopSpeech();
   const st=status(card.id), r=rec(card.id);
   const label={new:"New",learning:"Relearning",review:"Review"}[st];
   const el=$("study");
   const hasOpts=card.o&&card.o.length>1;
   el.innerHTML=`<article class="card">
     <div class="meta"><span class="chip ${st}">${label}</span><span>${r&&r[4]?"Missed "+r[4]+"×":""}${card.src?" · "+esc(card.src):""}</span></div>
-    <h2 class="q">${esc(card.q)}</h2>
+    <div class="qrow"><h2 class="q">${esc(card.q)}</h2>
+      <button class="spk round" id="readQ" aria-label="Read the question and choices aloud" aria-pressed="false" title="Read aloud">${ICON_SPK}</button></div>
+    ${termsHTML(card)}
     ${hasOpts?`<div class="opts">${shuffle(card.o).map((o,i)=>`<button class="opt" data-v="${esc(o)}"><span class="k">${"ABCD"[i]||i+1}</span><span>${esc(o)}</span></button>`).join("")}</div>`
              :`<div class="row"><button class="btn" id="reveal">Show answer</button></div>`}
     <div id="res"></div></article>`;
+  $("readQ").onclick=e=>{
+    const opts=[...el.querySelectorAll(".opt")].map((b,i)=>"ABCD"[i]+". "+b.dataset.v+".");
+    say(card.q+(opts.length?" "+opts.join(" "):""),false,e.currentTarget);
+  };
+  el.querySelectorAll(".term").forEach(b=>b.onclick=()=>say(b.dataset.say,true,b));
   if(hasOpts) el.querySelectorAll(".opt").forEach(b=>b.onclick=()=>answer(card,b.dataset.v===card.a,b));
   else $("reveal").onclick=()=>{
     $("reveal").parentElement.outerHTML=`<p class="expl"><strong>${esc(card.a)}</strong></p><div class="row"><button class="btn" id="gotIt">I got it</button><button class="btn ghost" id="missed">I missed it</button></div>`;
@@ -355,6 +381,83 @@ document.addEventListener("keydown",e=>{
   if(!answered&&i>=0){const b=$("study").querySelectorAll(".opt")[i%4]; if(b) b.click();}
   else if(answered&&(e.key==="Enter"||e.key===" ")&&$("next")){e.preventDefault();$("next").click();}
 });
+
+/* ---------- pronunciation ---------- */
+const ICON_SPK=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>`;
+// term -> how to say it (stressed syllable in capitals)
+const GLOSS={
+"effleurage":"EF-loo-rahzh","petrissage":"PEH-trih-sahzh","pettrisage":"PEH-trih-sahzh","tapotement":"tah-POHT-mahnt","friction":"FRIK-shun","vibration":"vy-BRAY-shun",
+"hyponychium":"hy-poh-NIK-ee-um","stratum corneum":"STRAT-um KOR-nee-um","nail matrix":"MAY-triks","matrix":"MAY-triks","melanonychia":"mel-uh-noh-NIK-ee-uh",
+"Beau's lines":"BOHZ lynz","pincer nails":"PIN-ser naylz","hangnails":"HANG-naylz",
+"alopecia areata":"al-oh-PEE-shuh air-ee-AH-tuh","alopecia":"al-oh-PEE-shuh","androgenic":"an-druh-JEN-ik","totalis":"toh-TAL-is","postpartum":"pohst-PAR-tum",
+"impetigo":"im-peh-TY-goh","psoriasis":"suh-RY-uh-sis","rosacea":"roh-ZAY-shee-uh","eczema":"EG-zuh-muh","pityriasis":"pit-ih-RY-uh-sis","canities":"kuh-NISH-ee-eez","tyrosinosis":"ty-roh-sih-NOH-sis",
+"comedones":"KOM-eh-dohnz","lupus":"LOO-pus","arthritis":"ar-THRY-tis","scabies":"SKAY-beez","ringworm":"RING-werm","hyperpigmentation":"hy-per-pig-men-TAY-shun","port-wine stains":"PORT-wyn stayns",
+"aniline derivative":"AN-ih-lin deh-RIV-uh-tiv","aniline":"AN-ih-lin","disulfide":"dy-SUL-fyd","thioglycolate":"thy-oh-GLY-koh-layt","sodium hydroxide":"SOH-dee-um hy-DROK-syd","hydroxide":"hy-DROK-syd",
+"methyl methacrylate":"METH-il meth-AK-rih-layt","monomer":"MON-uh-mer","polymer":"POL-ih-mer","ammonia":"uh-MOH-nee-uh","hydrogen peroxide":"HY-druh-jen per-OK-syd","acetone":"AS-eh-tohn","ethyl alcohol":"ETH-il AL-kuh-hol",
+"autoclave":"AW-toh-klayv","tuberculocidal":"too-ber-kyoo-loh-SY-dul","bactericidal":"bak-teer-ih-SY-dul","virucidal":"vy-ruh-SY-dul","fungicidal":"fun-jih-SY-dul",
+"pathogens":"PATH-uh-jenz","pathogenic":"path-uh-JEN-ik","microorganisms":"my-kroh-OR-guh-niz-umz","microbes":"MY-krohbz","antiseptic":"an-tih-SEP-tik","fumigation":"fyoo-mih-GAY-shun","sterilization":"stair-ih-lih-ZAY-shun","disinfection":"dis-in-FEK-shun","disinfectants":"dis-in-FEK-tunts","disinfectant":"dis-in-FEK-tunt","bloodborne":"BLUD-born","parasites":"PAIR-uh-syts","bacteria":"bak-TEER-ee-uh","bacterial":"bak-TEER-ee-ul",
+"desincrustation":"des-in-krus-TAY-shun","anaphoresis":"an-uh-for-EE-sis","cataphoresis":"kat-uh-for-EE-sis","exfoliation":"eks-foh-lee-AY-shun","exfoliant":"eks-FOH-lee-unt","electrotherapy":"ee-lek-troh-THAIR-uh-pee","contraindication":"kon-truh-in-dih-KAY-shun","contraindicated":"kon-truh-IN-dih-kay-tid","astringent":"uh-STRIN-jent","paraffin":"PAIR-uh-fin","sloughing":"SLUF-ing","tepid":"TEP-id",
+"cuticle":"KYOO-tih-kul","cortex":"KOR-teks","medulla":"meh-DUL-uh","dermal papilla":"DER-mul puh-PIL-uh","porosity":"puh-ROS-ih-tee","porous":"POR-us","elasticity":"ee-las-TIS-ih-tee",
+"demi permanent":"DEM-ee PER-muh-nent","demi-permanent":"DEM-ee PER-muh-nent","oxidative":"OK-sih-day-tiv","neutralizer":"NOO-truh-ly-zer","neutralizing":"NOO-truh-ly-zing","dehydrator":"dee-HY-dray-ter","symmetrical":"sih-MET-rih-kul","asymmetrical":"ay-sih-MET-rih-kul",
+"OSHA":"OH-shuh","SDS":"ess-dee-ess","UVB":"yoo-vee-BEE","EPA":"ee-pee-AY","FDA":"ef-dee-AY","adhesion":"ad-HEE-zhun","primer":"PRY-mer","conjunctivitis":"kun-junk-tih-VY-tis","pink eye":"PINK eye","licensee":"ly-sen-SEE","pH":"pee-AYCH","Safety Data Sheet":"SAYF-tee DAY-tuh sheet","prelightening":"pree-LY-ten-ing","lightener":"LY-ten-er"
+};
+const TERM_KEYS=Object.keys(GLOSS).sort((a,b)=>b.length-a.length);
+const TERM_RE=new RegExp("\\b("+TERM_KEYS.map(k=>k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|")+")\\b","gi");
+const SKIP_EASY=new Set(["friction","vibration","bacteria","primer","hangnails","ringworm","pink eye","bloodborne"]);
+function findTerms(card){
+  const text=[card.q,...(card.o||[card.a])].join("  ·  ");
+  const seen=new Map();
+  for(const m of text.matchAll(TERM_RE)){
+    const key=TERM_KEYS.find(k=>k.toLowerCase()===m[1].toLowerCase());
+    if(!key||SKIP_EASY.has(key.toLowerCase())) continue;
+    const id=GLOSS[key];
+    if(!seen.has(id)) seen.set(id,{word:m[1],ph:id});
+  }
+  return [...seen.values()].sort((a,b)=>a.word.localeCompare(b.word)).slice(0,8); // alphabetical, so the order never hints at the answer
+}
+function termsHTML(card){
+  const t=findTerms(card); if(!t.length) return "";
+  return `<div class="say"><span class="say-h">Say it</span><div class="terms">${t.map(x=>
+    `<button class="term" data-say="${esc(x.word)}" aria-pressed="false" aria-label="Hear ${esc(x.word)}, said ${esc(x.ph)}">${ICON_SPK}<b>${esc(x.word)}</b><span class="ph">${esc(x.ph)}</span></button>`).join("")}</div></div>`;
+}
+
+/* speech: Claude voice where the viewer has it, else the browser's own voice */
+let tts=null, ttsOff=false, speakingBtn=null;
+function speechAvailable(){ return tts ? !ttsOff : (!ttsOff && "speechSynthesis" in window); }
+function syncSpeechUI(){ document.body.classList.toggle("nospeech",!speechAvailable()); }
+function markSpeaking(btn){ if(speakingBtn) speakingBtn.setAttribute("aria-pressed","false"); speakingBtn=btn; if(btn) btn.setAttribute("aria-pressed","true"); }
+function say(text, slow, btn){
+  if(!speechAvailable()) return;
+  if(btn && btn===speakingBtn){ stopSpeech(); return; } // tap again = stop
+  markSpeaking(btn);
+  if(tts){
+    tts.speak(text,{language:"en",rate:slow?0.8:0.95}).then(()=>{if(speakingBtn===btn) markSpeaking(null);}).catch(e=>{
+      if(speakingBtn===btn) markSpeaking(null);
+      if(e&&(e.code==="not_granted"||e.code==="unavailable")){ttsOff=true; syncSpeechUI();}
+      else if(e&&e.code==="rate_limited") toast("Too many readings right now. Try again in a minute.");
+      else if(e&&e.code==="busy") toast("Finish dictating, then tap the speaker again.");
+    });
+    return;
+  }
+  try{
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text); u.lang="en-US"; u.rate=slow?0.75:0.95;
+    u.onend=u.onerror=()=>{if(speakingBtn===btn) markSpeaking(null);};
+    speechSynthesis.speak(u);
+  }catch(e){ markSpeaking(null); }
+}
+function stopSpeech(){
+  markSpeaking(null);
+  if(tts) tts.stop().catch(()=>{}); else try{speechSynthesis.cancel();}catch(e){}
+}
+async function connectSpeech(){
+  try{
+    if(!window.claude?.use) return;
+    const t=await claude.use("tts");
+    if(t){ tts=t; t.onState(({state,reason})=>{ if(state==="idle"){ markSpeaking(null); if(reason==="not_granted"||reason==="unavailable"){ttsOff=true;syncSpeechUI();} } }); }
+  }catch(e){}
+  syncSpeechUI();
+}
 
 /* ---------- browse ---------- */
 function renderList(){
@@ -503,6 +606,6 @@ lash(){
 };
 
 /* ---------- boot ---------- */
-lsLoad(); refresh(); connect();
+syncSpeechUI(); lsLoad(); refresh(); connect(); connectSpeech();
 setInterval(()=>{ if(!answered && $("study").querySelector(".empty")) return; const c=counts(); $("sDue").textContent=c.due; },30000);
 </script>
