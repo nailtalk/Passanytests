@@ -113,6 +113,45 @@ body.nospeech .spk{display:none}
 .term[aria-pressed="true"]{border-color:var(--accent)}
 body.nospeech .term{cursor:default}
 body.nospeech .term svg{display:none}
+.sticky-act{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:5;background:var(--surface);padding:10px;margin:0 -10px -10px;border-radius:12px;box-shadow:0 -6px 18px -8px rgb(0 0 0 / .25)}
+.sticky-act .btn{flex:1}
+.exnav{display:flex;gap:8px}
+.exbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:6;background:var(--bg);padding-block:8px;display:flex;flex-direction:column;gap:6px}
+.exbar-top{display:flex;justify-content:space-between;align-items:center;font:600 1rem var(--font-display)}
+.muted{color:var(--muted);font-weight:500}
+.clock{font:500 1.05rem var(--font-mono);font-variant-numeric:tabular-nums;padding:4px 10px;border-radius:8px;background:var(--accent-soft);color:var(--accent)}
+.clock.low{background:var(--bad-soft);color:var(--bad)}
+.prog{position:relative;height:6px;border-radius:99px;background:var(--line);overflow:visible}
+.prog i{display:block;height:100%;border-radius:99px;background:var(--accent)}
+.prog.big{height:12px}
+.prog em{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--fg)}
+.opt.picked{border-color:var(--accent);background:var(--accent-soft)}
+.opt.picked .k{color:var(--accent);font-weight:700}
+.flag[aria-pressed="true"]{border-color:var(--warn);color:var(--warn)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:6px}
+.gq{position:relative;height:40px;border-radius:8px;border:1.5px solid var(--line);background:var(--surface);color:var(--fg);font:500 .85rem var(--font-mono);cursor:pointer}
+.gq.done{background:var(--accent-soft);border-color:var(--accent)}
+.gq.cur{outline:2px solid var(--fg);outline-offset:1px}
+.gq.flag::after{content:"";position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:var(--warn)}
+.bigscore{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.bigscore b{font:700 3rem/1 var(--font-display)}
+.score.pass .bigscore b{color:var(--good)} .score.fail .bigscore b{color:var(--bad)}
+.bigscore span{color:var(--muted)}
+.topics{display:flex;flex-direction:column;gap:6px}
+.trow{display:grid;grid-template-columns:minmax(0,1.4fr) 1fr auto;gap:10px;align-items:center;font-size:.88rem}
+.tbar{height:8px;border-radius:99px;background:var(--line);overflow:hidden}
+.tbar i{display:block;height:100%}
+.tbar i.ok{background:var(--good)} .tbar i.no{background:var(--bad)}
+.trow b{font:500 .8rem var(--font-mono)}
+.review{display:flex;flex-direction:column;gap:12px}
+.rv.ok{border-left:4px solid var(--good)} .rv.no{border-left:4px solid var(--bad)}
+.rv .q{font-size:1.08rem}
+.rv .opt{cursor:default}
+.why{display:flex;flex-direction:column;gap:8px;padding-top:8px;border-top:1px dashed var(--line)}
+.hist{display:flex;flex-wrap:wrap;gap:6px}
+.hchip{font:600 .9rem var(--font-mono);padding:4px 10px;border-radius:8px}
+.hchip small{font-weight:400;color:var(--muted);font-size:.72rem}
+.hchip.pass{background:var(--good-soft);color:var(--good)} .hchip.fail{background:var(--bad-soft);color:var(--bad)}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:99px;font-weight:600;font-size:.9rem;max-width:calc(100% - 32px)}
 .sync{font:500 .72rem var(--font-mono);color:var(--muted)}
 section{display:flex;flex-direction:column;gap:14px}
@@ -127,6 +166,7 @@ section{display:flex;flex-direction:column;gap:14px}
     <p class="sub">Georgia exam practice · <span id="sync" class="sync">loading progress…</span></p>
   </header>
 
+  <div id="studyTop" style="display:flex;flex-direction:column;gap:18px">
   <div class="stats" aria-label="Deck summary">
     <div class="stat due"><b id="sDue">0</b><span>Due now</span></div>
     <div class="stat learn"><b id="sLearn">0</b><span>Relearning</span></div>
@@ -138,15 +178,19 @@ section{display:flex;flex-direction:column;gap:14px}
     <span class="pace-label" id="paceLabel">New cards per day</span>
     <div class="seg" id="pace" role="group" aria-labelledby="paceLabel"></div>
   </div>
+  </div>
 
   <nav role="tablist">
     <button id="tStudy" role="tab" aria-selected="true" data-tab="study">Study</button>
+    <button id="tExam" role="tab" aria-selected="false" data-tab="exam">Exam</button>
     <button id="tBrowse" role="tab" aria-selected="false" data-tab="browse">All cards</button>
     <button id="tAdd" role="tab" aria-selected="false" data-tab="add">Import</button>
     <button id="tSet" role="tab" aria-selected="false" data-tab="settings">Settings</button>
   </nav>
 
   <section id="study"></section>
+
+  <section id="exam" hidden></section>
 
   <section id="browse" hidden>
     <input type="search" id="search" placeholder="Search questions and answers">
@@ -206,7 +250,7 @@ function lsSave(){try{localStorage.setItem(LS,JSON.stringify(state));}catch(e){}
 function save(){
   lsSave();
   if(!progRef) return;
-  const body={p:state.p,newDay:state.newDay,newPerDay:state.newPerDay};
+  const body={p:state.p,newDay:state.newDay,newPerDay:state.newPerDay,exams:state.exams||[]};
   writing=writing.then(()=>progRef.set(body)).catch(()=>setSync("Couldn't save online, saved on this device"));
 }
 function saveDeck(){
@@ -226,9 +270,9 @@ async function connect(){
     const timer=setTimeout(()=>setSync("can't reach your saved progress yet"),10000);
     const [ps,ds]=await Promise.all([progRef.get(),deckRef.get()]);
     clearTimeout(timer);
-    if(ps.exists){const v=ps.data(); state.p=structuredClone(v.p||{}); state.newDay=structuredClone(v.newDay||{d:"",n:0}); state.newPerDay=v.newPerDay||25;}
+    if(ps.exists){const v=JSON.parse(JSON.stringify(ps.data())); state.p=v.p||{}; state.newDay=v.newDay||{d:"",n:0}; state.newPerDay=v.newPerDay||25; state.exams=v.exams||state.exams||[];}
     else if(Object.keys(state.p).length){save();}
-    if(ds.exists){state.custom=structuredClone(ds.data().cards||[]);}
+    if(ds.exists){state.custom=JSON.parse(JSON.stringify(ds.data().cards||[]));}
     else if(state.custom.length){saveDeck();}
     setSync("progress synced to your account");
     lsSave(); refresh();
@@ -369,9 +413,10 @@ function answer(card, ok, btn){
     ${ok?"":`<p class="expl">Answer: <strong>${esc(card.a)}</strong></p>`}
     ${card.e?`<p class="expl">${esc(card.e)}</p>`:""}
     ${fig}
-    <div class="row"><button class="btn" id="next">Next card</button></div></div>`;
-  $("next").onclick=()=>{answered=false; refresh();};
+    <div class="row sticky-act"><button class="btn" id="next">Next question →</button></div></div>`;
+  $("next").onclick=()=>{answered=false; refresh(); $("study").scrollIntoView({block:"start"});};
   $("next").focus({preventScroll:true});
+  $("res").scrollIntoView({behavior:"smooth",block:"nearest"});
   const c=counts(); $("sDue").textContent=c.due; $("sLearn").textContent=c.learn; $("sNew").textContent=c.newToday; $("sKnown").textContent=c.known;
 }
 
@@ -507,16 +552,223 @@ $("resetYes").onclick=()=>{state.p={}; state.newDay={d:"",n:0}; save(); $("reset
 /* ---------- tabs + toast ---------- */
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
   document.querySelectorAll("nav button").forEach(x=>x.setAttribute("aria-selected",x===b));
-  ["study","browse","add","settings"].forEach(id=>$(id).hidden=id!==b.dataset.tab);
+  ["study","exam","browse","add","settings"].forEach(id=>$(id).hidden=id!==b.dataset.tab);
+  $("studyTop").hidden=b.dataset.tab!=="study";
+  if(b.dataset.tab==="exam") renderExam();
+  if(b.dataset.tab==="study"&&!answered) refresh();
   if(b.dataset.tab==="browse") renderList();
   if(b.dataset.tab==="settings") $("newPerDay").value=state.newPerDay;
 });
 let toastT; function toast(t){const el=$("toast"); el.textContent=t; el.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>el.hidden=true,2200);}
 
+/* ---------- practice exam ---------- */
+const TOPICS=[
+  ["Infection control & safety",/disinfect|steril|antiseptic|pathogen|bacteri|EPA|OSHA|SDS|Safety Data|autoclave|contagious|parasit|lice|scabies|ringworm|impetigo|boil|precaution|linens|gloves|glasses|bloodborne|foot spa|immers|contaminat|microb|infection|release form|first line of defense/i],
+  ["Nail care",/nail|acrylic|gel |gel$|primer|hangnail|monomer|methacrylate|manicure|hyponychium|paraffin/i],
+  ["Hair color & lightening",/colou?r|tint|lighten|level system|patch test|aniline|filler|orange|complement|oxidative|prelighten/i],
+  ["Chemical texture",/perm|wave|relax|neutraliz|hydroxide|thio|end paper|rods?\b|fishhook|disulfide|curl|chemical service|strand test/i],
+  ["Skin, facials & hair removal",/wax|tweez|brow|lash|facial|skin|UV|exfoliat|electro|high frequency|mask|lupus|eye/i],
+  ["Massage",/massage|effleurage|petrissage|tapotement|vibration|stroke/i],
+  ["Haircutting & hair care",/shear|cut|brush|symmetr|blunt|razor|scalp|shampoo|hair loss|alopecia|protein|extension|drap|neck strip|damaged hair/i],
+];
+function topicOf(c){const t=c.q+" "+c.a; for(const [n,re] of TOPICS) if(re.test(t)) return n; return "General knowledge";}
+const PASS=75;
+let exam=null, examTimer=null;
+
+function renderExam(){
+  const el=$("exam");
+  if(!exam) return renderExamSetup(el);
+  if(exam.done) return renderExamResults(el);
+  renderExamQuestion(el);
+}
+function renderExamSetup(el){
+  const total=allCards().filter(c=>c.o&&c.o.length>1).length;
+  const sizes=[25,50,100,total].filter((v,i,a)=>v<=total&&a.indexOf(v)===i);
+  const hist=(state.exams||[]).slice(-5).reverse();
+  el.innerHTML=`<article class="card">
+    <h2 class="q">Practice exam</h2>
+    <p class="hint">Exam conditions: questions in random order and no feedback until you submit. You can flag questions and come back to them. Passing target: ${PASS}%. Afterwards you review every question with an explanation and picture.</p>
+    <div class="pace"><span class="pace-label">Number of questions</span><div class="seg" id="exSize">${sizes.map((v,i)=>`<button data-v="${v}" aria-pressed="${i===1||sizes.length===1?"true":"false"}">${v===total?"All "+v:v}</button>`).join("")}</div></div>
+    <div class="pace"><span class="pace-label">Timer</span><div class="seg" id="exTime">
+      <button data-v="1" aria-pressed="true">On · 1 min per question</button><button data-v="0" aria-pressed="false">Off</button></div></div>
+    <div class="row"><button class="btn" id="exStart">Start exam</button></div>
+    ${hist.length?`<div class="say"><span class="say-h">Recent scores</span><div class="hist">${hist.map(h=>`<span class="hchip ${h.s>=PASS?"pass":"fail"}">${h.s}% <small>${h.n} q · ${h.d}</small></span>`).join("")}</div></div>`:""}
+  </article>`;
+  ["exSize","exTime"].forEach(id=>el.querySelectorAll("#"+id+" button").forEach(b=>b.onclick=()=>{el.querySelectorAll("#"+id+" button").forEach(x=>x.setAttribute("aria-pressed",x===b));}));
+  $("exStart").onclick=()=>{
+    const n=+el.querySelector("#exSize [aria-pressed=true]").dataset.v, timed=el.querySelector("#exTime [aria-pressed=true]").dataset.v==="1";
+    startExam(shuffle(allCards().filter(c=>c.o&&c.o.length>1)).slice(0,n),timed);
+  };
+}
+function startExam(cards,timed){
+  exam={qs:cards.map(c=>({c,opts:shuffle(c.o),pick:null,flag:false})),i:0,start:Date.now(),limit:timed?cards.length*60e3:0,done:false,showNav:false};
+  renderExam(); tickExam(); window.scrollTo({top:$("exam").offsetTop-8});
+}
+function tickExam(){
+  clearInterval(examTimer);
+  if(!exam||exam.done) return;
+  const upd=()=>{
+    const el=$("exClock"); if(!el) return;
+    const used=Date.now()-exam.start;
+    if(exam.limit){const left=exam.limit-used; if(left<=0){submitExam(true);return;}
+      el.textContent=fmtClock(left); el.classList.toggle("low",left<5*60e3);}
+    else el.textContent=fmtClock(used);
+  };
+  upd(); examTimer=setInterval(upd,1000);
+}
+function fmtClock(ms){const s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return (h?h+":"+String(m).padStart(2,"0"):m)+":"+String(x).padStart(2,"0");}
+
+function renderExamQuestion(el){
+  const q=exam.qs[exam.i], n=exam.qs.length, answeredN=exam.qs.filter(x=>x.pick!==null).length;
+  el.innerHTML=`<div class="exbar">
+      <div class="exbar-top"><strong>Question ${exam.i+1} <span class="muted">of ${n}</span></strong>
+        <span class="clock" id="exClock" title="${exam.limit?"Time left":"Time used"}"></span></div>
+      <div class="prog"><i style="width:${answeredN/n*100}%"></i></div>
+    </div>
+    <article class="card">
+      <div class="meta"><span class="chip">${esc(topicOf(q.c))}</span>
+        <button class="btn ghost small flag" id="exFlag" aria-pressed="${q.flag}">${q.flag?"⚑ Flagged":"⚐ Flag for review"}</button></div>
+      <div class="qrow"><h2 class="q">${esc(q.c.q)}</h2>
+        <button class="spk round" id="readQ" aria-label="Read the question and choices aloud" aria-pressed="false">${ICON_SPK}</button></div>
+      ${termsHTML(q.c)}
+      <div class="opts">${q.opts.map((o,i)=>`<button class="opt${q.pick===o?" picked":""}" data-v="${esc(o)}" aria-pressed="${q.pick===o}"><span class="k">${"ABCD"[i]}</span><span>${esc(o)}</span></button>`).join("")}</div>
+      <div class="exnav sticky-act">
+        <button class="btn ghost" id="exPrev" ${exam.i===0?"disabled":""}>← Back</button>
+        ${exam.i<n-1?`<button class="btn" id="exNext">${q.pick===null?"Skip →":"Next →"}</button>`:`<button class="btn" id="exReview">Review & submit</button>`}
+      </div>
+    </article>
+    <button class="btn ghost small" id="exNavT">${exam.showNav?"Hide":"Show"} all questions (${answeredN}/${n} answered)</button>
+    ${exam.showNav?`<div class="grid">${exam.qs.map((x,i)=>`<button class="gq${x.pick!==null?" done":""}${x.flag?" flag":""}${i===exam.i?" cur":""}" data-i="${i}">${i+1}</button>`).join("")}</div>
+      <p class="hint">Filled = answered · orange dot = flagged</p>`:""}
+    <div class="row"><button class="btn ghost small danger" id="exQuit">Quit exam</button></div>`;
+  tickExam();
+  el.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{q.pick=b.dataset.v; renderExamQuestion(el);});
+  $("readQ").onclick=e=>say(q.c.q+" "+q.opts.map((o,i)=>"ABCD"[i]+". "+o+".").join(" "),false,e.currentTarget);
+  el.querySelectorAll(".term").forEach(b=>b.onclick=()=>say(b.dataset.say,true,b));
+  $("exFlag").onclick=()=>{q.flag=!q.flag; renderExamQuestion(el);};
+  $("exPrev").onclick=()=>goQ(exam.i-1);
+  if($("exNext")) $("exNext").onclick=()=>goQ(exam.i+1);
+  if($("exReview")) $("exReview").onclick=()=>confirmSubmit(el);
+  $("exNavT").onclick=()=>{exam.showNav=!exam.showNav; renderExamQuestion(el);};
+  el.querySelectorAll(".gq").forEach(b=>b.onclick=()=>goQ(+b.dataset.i));
+  $("exQuit").onclick=()=>{$("exQuit").outerHTML=`<span class="row"><span class="hint">Quit and lose this attempt?</span><button class="btn small" id="exQuitY" style="background:var(--bad)">Quit</button><button class="btn ghost small" id="exQuitN">Keep going</button></span>`;
+    $("exQuitY").onclick=()=>{exam=null;clearInterval(examTimer);renderExam();}; $("exQuitN").onclick=()=>renderExamQuestion(el);};
+}
+function goQ(i){ if(i<0||i>=exam.qs.length) return; if(speakingBtn) stopSpeech(); exam.i=i; renderExamQuestion($("exam")); $("exam").scrollIntoView({block:"start"}); }
+function confirmSubmit(el){
+  const un=exam.qs.filter(x=>x.pick===null).length, fl=exam.qs.filter(x=>x.flag).length;
+  el.querySelector(".exnav").outerHTML=`<div class="card" style="gap:10px;background:var(--bg)">
+    <strong>Submit your exam?</strong>
+    <p class="hint">${un?`<b style="color:var(--bad)">${un} unanswered</b> (they count as wrong). `:"Every question is answered. "}${fl?fl+" flagged for review.":""}</p>
+    <div class="row"><button class="btn" id="exSubmit">Submit exam</button>${un||fl?`<button class="btn ghost" id="exGo">Go to ${un?"first unanswered":"first flagged"}</button>`:""}<button class="btn ghost" id="exBack">Keep working</button></div></div>`;
+  $("exSubmit").onclick=()=>submitExam(false);
+  $("exBack").onclick=()=>renderExamQuestion(el);
+  if($("exGo")) $("exGo").onclick=()=>goQ(exam.qs.findIndex(x=>un?x.pick===null:x.flag));
+}
+function submitExam(timeUp){
+  clearInterval(examTimer);
+  exam.done=true; exam.timeUp=timeUp; exam.used=Date.now()-exam.start; exam.filter="missed";
+  const right=exam.qs.filter(x=>x.pick===x.c.a).length; exam.score=Math.round(right/exam.qs.length*100); exam.right=right;
+  state.exams=(state.exams||[]).concat([{d:new Date().toLocaleDateString(undefined,{month:"short",day:"numeric"}),s:exam.score,n:exam.qs.length}]).slice(-20);
+  save(); renderExam(); $("exam").scrollIntoView({block:"start"});
+}
+function renderExamResults(el){
+  const n=exam.qs.length, pass=exam.score>=PASS, missed=exam.qs.filter(x=>x.pick!==x.c.a);
+  const by={}; exam.qs.forEach(x=>{const t=topicOf(x.c); by[t]=by[t]||[0,0]; by[t][1]++; if(x.pick===x.c.a) by[t][0]++;});
+  const list=exam.filter==="missed"?missed:exam.qs;
+  el.innerHTML=`<article class="card score ${pass?"pass":"fail"}">
+      <div class="meta"><span class="chip ${pass?"review":""}">${pass?"Passed":"Not passed yet"}</span><span>${exam.timeUp?"Time ran out · ":""}${fmtClock(exam.used)} used</span></div>
+      <div class="bigscore"><b>${exam.score}%</b><span>${exam.right} of ${n} correct · passing target ${PASS}%</span></div>
+      <div class="prog big"><i style="width:${exam.score}%"></i><em style="left:${PASS}%"></em></div>
+      <div class="say"><span class="say-h">By topic</span>
+        <div class="topics">${Object.entries(by).sort((a,b)=>a[1][0]/a[1][1]-b[1][0]/b[1][1]).map(([t,[r,c]])=>{const p=Math.round(r/c*100);return `<div class="trow"><span>${esc(t)}</span><span class="tbar"><i style="width:${p}%" class="${p>=PASS?"ok":"no"}"></i></span><b>${r}/${c}</b></div>`;}).join("")}</div></div>
+      <div class="row">${missed.length?`<button class="btn" id="exDrill">Practice my ${missed.length} missed as flashcards</button><button class="btn ghost" id="exRetake">Retake missed only</button>`:""}<button class="btn ghost" id="exNew">New exam</button></div>
+    </article>
+    <div class="row"><span class="pace-label">Review</span><div class="seg" id="exFilt"><button data-v="missed" aria-pressed="${exam.filter==="missed"}">Missed (${missed.length})</button><button data-v="all" aria-pressed="${exam.filter==="all"}">All ${n}</button></div></div>
+    <div class="review">${list.length?list.map(x=>{const ok=x.pick===x.c.a, i=exam.qs.indexOf(x);
+      return `<article class="card rv ${ok?"ok":"no"}">
+        <div class="meta"><span class="chip ${ok?"review":"learning"}">${ok?"Correct":"Missed"} · Q${i+1}</span><span>${esc(topicOf(x.c))}</span></div>
+        <h3 class="q">${esc(x.c.q)}</h3>
+        <div class="opts">${x.opts.map((o,j)=>`<div class="opt ${o===x.c.a?"right":o===x.pick?"wrong":"dim"}"><span class="k">${"ABCD"[j]}</span><span>${esc(o)}${o===x.pick?" <small>(your answer)</small>":""}</span></div>`).join("")}</div>
+        ${x.pick===null?`<p class="expl" style="color:var(--bad)">Not answered.</p>`:""}
+        <div class="why"><span class="say-h">Why</span><p class="expl">${esc(x.c.e||"")}</p>${x.c.fig&&FIG[x.c.fig]?`<div class="fig">${FIG[x.c.fig]()}</div>`:""}</div>
+      </article>`;}).join(""):`<p class="hint">Nothing missed. Every answer was correct.</p>`}</div>`;
+  el.querySelectorAll("#exFilt button").forEach(b=>b.onclick=()=>{exam.filter=b.dataset.v; renderExamResults(el);});
+  $("exNew").onclick=()=>{exam=null; renderExam();};
+  if($("exRetake")) $("exRetake").onclick=()=>startExam(shuffle(missed.map(x=>x.c)),!!exam.limit);
+  if($("exDrill")) $("exDrill").onclick=()=>{
+    const now=Date.now();
+    missed.forEach(x=>{const r=state.p[x.c.id]||[now,0,0,0,0]; state.p[x.c.id]=[now,0,Math.max(1,r[2]),r[3]+1,r[4]+1];});
+    save(); toast(missed.length+" missed questions are now due in Study"); $("tStudy").click();
+  };
+}
+
 /* ---------- memory pictures ---------- */
 const S=(w,h,body)=>`<svg viewBox="0 0 ${w} ${h}" role="img">${body}</svg>`;
 const T=(x,y,t,o="")=>`<text x="${x}" y="${y}" ${o}>${t}</text>`;
 const FIG={
+disease(){
+  const cols=[["Bacteria","var(--fig-e)","Impetigo · Boil (furuncle)","Pus, blisters, infection"],["Fungus","var(--fig-c)","Ringworm (tinea)","Round, scaly, contagious"],["Parasite","var(--fig-a)","Head lice · Scabies (itch mites)","Lives ON or IN the skin"],["Virus","var(--fig-b)","Cold sores · Warts · Pink eye*","Spreads person to person"]];
+  let s=T(10,18,"What causes it?",'style="font-weight:700"');
+  cols.forEach(([h,c,ex,d],i)=>{const y=30+i*40; s+=`<rect x="10" y="${y}" width="8" height="32" rx="3" fill="${c}"/>${T(26,y+13,h,'style="font-weight:700"')}${T(110,y+13,ex)}${T(110,y+27,d,'class="t-muted" style="font-size:10px"')}`;});
+  s+=T(10,200,"*Pink eye can be viral or bacterial. Either way: no service until it heals.",'class="t-muted" style="font-size:10px"');
+  return S(380,208,s);
+},
+noservice(){
+  const items=["Broken skin, abrasions, open sores","Contagious conditions: ringworm, pink eye, impetigo","Lupus or very fragile skin (no waxing)","Moles, warts (no wax over them)","Psoriasis / scaly patches (no chemicals)","Poor circulation (no hot paraffin)","Arthritis: massage gently, avoid sore joints"];
+  let s=`<circle cx="40" cy="44" r="28" fill="none" stroke="var(--fig-e)" stroke-width="6"/><line x1="20" y1="64" x2="60" y2="24" stroke="var(--fig-e)" stroke-width="6"/>`+T(84,36,"Contraindication",'style="font-weight:700;font-size:14px"')+T(84,54,"= a reason NOT to do (or to change) a service",'class="t-muted"');
+  items.forEach((t,i)=>{s+=`<circle cx="18" cy="${96+i*20}" r="3" fill="var(--fig-e)"/>`+T(28,100+i*20,t);});
+  return S(380,236,s);
+},
+drape(){
+  const lay=[["1 · Neck strip","touches the skin, keeps the cape off the neck","var(--fig-b)"],["2 · Towel","absorbs drips","var(--fig-c)"],["3 · Plastic cape","waterproof, stops chemicals","var(--fig-a)"]];
+  let s=`<circle cx="60" cy="40" r="22" fill="none" stroke="var(--fg)" stroke-width="2"/><path d="M38 66 q22 14 44 0" stroke="var(--fig-b)" stroke-width="5" fill="none"/><path d="M30 76 q30 20 60 0" stroke="var(--fig-c)" stroke-width="8" fill="none"/><path d="M14 92 q46 40 92 0 L112 150 H8 Z" fill="var(--fig-a)" opacity=".45"/>`;
+  lay.forEach(([h,d,c],i)=>{s+=`<rect x="130" y="${22+i*44}" width="8" height="32" rx="3" fill="${c}"/>${T(146,36+i*44,h,'style="font-weight:700"')}${T(146,50+i*44,d,'class="t-muted" style="font-size:10px"')}`;});
+  s+=T(10,168,"Chemical service drape: neck strip → towel → plastic cape.",'style="font-weight:600"');
+  return S(380,176,s);
+},
+uv(){
+  return S(380,150,`<circle cx="40" cy="40" r="22" fill="var(--fig-c)"/>`+
+   `<path d="M70 36 q20 -14 40 0 t40 0 t40 0 t40 0" stroke="var(--fig-b)" stroke-width="3" fill="none"/>${T(250,40,"UVA = Aging",'style="font-weight:700"')}${T(250,54,"goes deep, wrinkles",'class="t-muted"')}`+
+   `<path d="M70 76 q10 -14 20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0" stroke="var(--fig-e)" stroke-width="3" fill="none"/>${T(250,80,"UVB = Burning",'style="font-weight:700"')}${T(250,94,"sunburn, skin cancer",'class="t-muted"')}`+
+   `${T(10,134,"Memory trick: A for Aging, B for Burning.",'style="font-weight:600"')}`);
+},
+bowl(){
+  return S(380,150,`<path d="M20 50 h90 q-6 50 -45 50 q-39 0 -45 -50z" fill="var(--fig-b)" opacity=".35" stroke="var(--fig-b)" stroke-width="2"/>${T(40,120,"Plastic ✓")}`+
+   `<path d="M140 50 h90 q-6 50 -45 50 q-39 0 -45 -50z" fill="var(--fig-d)" opacity=".25" stroke="var(--fig-d)" stroke-width="2"/>${T(162,120,"Glass ✓")}`+
+   `<path d="M260 50 h90 q-6 50 -45 50 q-39 0 -45 -50z" fill="var(--muted)" opacity=".35" stroke="var(--fig-e)" stroke-width="2"/><line x1="262" y1="40" x2="350" y2="108" stroke="var(--fig-e)" stroke-width="5"/>${T(282,120,"Metal ✗",'style="font-weight:700;fill:var(--bad)"')}`+
+   `${T(10,24,"Mixing color",'style="font-weight:700"')}${T(10,142,"Metal reacts with the color and developer: color change, heat, damage.",'class="t-muted"')}`);
+},
+agencies(){
+  const r=[["EPA","Registers DISINFECTANTS (must kill bacteria, viruses, fungi)","var(--fig-d)"],["OSHA","Workplace SAFETY: ventilation, SDS, chemical handling","var(--fig-b)"],["FDA","Cosmetics + drugs. Banned liquid MMA for nails","var(--fig-a)"],["SDS","Safety Data Sheet: product safety info, from the manufacturer","var(--fig-c)"]];
+  let s=T(10,18,"Who's in charge of what",'style="font-weight:700"');
+  r.forEach(([h,d,c],i)=>{const y=30+i*42; s+=`<rect x="10" y="${y}" width="62" height="32" rx="6" fill="${c}" opacity=".25" stroke="${c}"/>${T(22,y+21,h,'style="font-weight:700;font-size:13px"')}${T(84,y+20,d,'style="font-size:10.5px"')}`;});
+  return S(400,200,s);
+},
+ppe(){
+  const t=[["Gloves","Waxing / hair removal, any blood or body fluid"],["Safety glasses + gloves","Mixing disinfectant concentrate"],["Covered container","Dirty linens, right after the service"],["Rinse with plain water","Chemical (perm solution) in the eye"],["Soap + water","Disinfectant on your skin"]];
+  let s=T(10,18,"Protect yourself and the client",'style="font-weight:700"');
+  t.forEach(([h,d],i)=>{const y=34+i*30; s+=`<rect x="10" y="${y-12}" width="6" height="22" rx="2" fill="var(--fig-${"abcde"[i]})"/>${T(24,y,h,'style="font-weight:700"')}${T(24,y+12,d,'class="t-muted" style="font-size:10px"')}`;});
+  return S(380,186,s);
+},
+acrylic(){
+  return S(380,170,`<rect x="14" y="30" width="50" height="60" rx="8" fill="var(--fig-b)" opacity=".35" stroke="var(--fig-b)"/>${T(14,108,"Liquid")}${T(14,122,"MONOMER",'style="font-weight:700"')}`+
+   `${T(76,64,"+",'style="font-size:20px"')}<path d="M96 90 l20 -50 l20 50z" fill="var(--fig-c)" opacity=".45"/>${T(96,108,"Powder")}${T(96,122,"POLYMER",'style="font-weight:700"')}`+
+   `${T(150,64,"=",'style="font-size:20px"')}<ellipse cx="200" cy="62" rx="22" ry="16" fill="var(--fig-a)" opacity=".7"/>${T(180,108,"Bead",'style="font-weight:700"')}`+
+   `${T(250,40,"Too wet: runs",'class="t-muted"')}${T(250,60,"Medium: just right ✓",'style="font-weight:700"')}${T(250,80,"Too dry: grainy",'class="t-muted"')}`+
+   `${T(10,150,"Gel = cured under a UV/LED lamp. Liquid MMA = banned by the FDA.",'style="font-weight:600"')}`);
+},
+paraffin(){
+  return S(380,150,`<rect x="20" y="60" width="140" height="60" rx="8" fill="var(--fig-c)" opacity=".35" stroke="var(--fig-c)"/><path d="M60 20 v60 q0 14 14 14 h20 q14 0 14 -14 v-60" fill="var(--surface)" stroke="var(--fg)" stroke-width="2"/>`+
+   `${T(180,40,"Warm paraffin wax",'style="font-weight:700"')}${T(180,56,"moisturizes + softens skin",'class="t-muted"')}${T(180,82,"Test the temperature first",'style="font-weight:700"')}${T(180,98,"(on your wrist / the client's)",'class="t-muted"')}${T(180,124,"Not for poor circulation",'style="font-weight:700;fill:var(--bad)"')}`);
+},
+forms(){
+  const r=[["Intake form","Client info + health history, BEFORE the first service"],["Release form","Client SIGNS: agrees to the service + accepts the risks","b"],["Service record","What you did: products, timing, results"]];
+  let s="";
+  r.forEach(([h,d,b],i)=>{const x=10+i*124; s+=`<rect x="${x}" y="10" width="114" height="130" rx="6" fill="var(--surface)" stroke="${b?"var(--fig-a)":"var(--line)"}" stroke-width="${b?3:1.5}"/><path d="M${x+12} 52 h88 M${x+12} 64 h70 M${x+12} 76 h80" stroke="var(--line)" stroke-width="3"/>${T(x+10,32,h,'style="font-weight:700"')}`;
+    const words=d.split(" "); let line="",ly=96; words.forEach(w=>{if((line+w).length>19){s+=T(x+10,ly,line,'style="font-size:9.5px"');ly+=12;line="";} line+=w+" ";}); s+=T(x+10,ly,line,'style="font-size:9.5px"');});
+  return S(390,150,s);
+},
 wheel(){
   const cols=[["Yellow","#e8c228"],["Yellow-orange","#eda32a"],["Orange","#e87b26"],["Red-orange","#dc4f2a"],["Red","#c9302c"],["Red-violet","#a3307a"],["Violet","#6d3a9c"],["Blue-violet","#4b47a8"],["Blue","#2f6fb0"],["Blue-green","#21908a"],["Green","#3a9a3e"],["Yellow-green","#9cbc2c"]];
   let s=""; const cx=150,cy=120,R=92,r=46;
