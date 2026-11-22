@@ -152,6 +152,8 @@ body.nospeech .term svg{display:none}
 .hchip{font:600 .9rem var(--font-mono);padding:4px 10px;border-radius:8px}
 .hchip small{font-weight:400;color:var(--muted);font-size:.72rem}
 .hchip.pass{background:var(--good-soft);color:var(--good)} .hchip.fail{background:var(--bad-soft);color:var(--bad)}
+.tally{font:600 .95rem var(--font-mono);display:flex;gap:10px}
+.t-ok{color:var(--good)} .t-no{color:var(--bad)}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:99px;font-weight:600;font-size:.9rem;max-width:calc(100% - 32px)}
 .sync{font:500 .72rem var(--font-mono);color:var(--muted)}
 section{display:flex;flex-direction:column;gap:14px}
@@ -587,7 +589,7 @@ function renderExamSetup(el){
   const hist=(state.exams||[]).slice(-5).reverse();
   el.innerHTML=`<article class="card">
     <h2 class="q">Practice exam</h2>
-    <p class="hint">Exam conditions: questions in random order and no feedback until you submit. You can flag questions and come back to them. Passing target: ${PASS}%. Afterwards you review every question with an explanation and picture.</p>
+    <p class="hint">Questions come in random order. After each answer you see right away whether it's right or wrong, with the reason and a picture. At the end you get your score (passing target ${PASS}%), a breakdown by topic, and a review of every question.</p>
     <div class="pace"><span class="pace-label">Number of questions</span><div class="seg" id="exSize">${sizes.map((v,i)=>`<button data-v="${v}" aria-pressed="${i===1||sizes.length===1?"true":"false"}">${v===total?"All "+v:v}</button>`).join("")}</div></div>
     <div class="pace"><span class="pace-label">Timer</span><div class="seg" id="exTime">
       <button data-v="1" aria-pressed="true">On · 1 min per question</button><button data-v="0" aria-pressed="false">Off</button></div></div>
@@ -622,6 +624,7 @@ function renderExamQuestion(el){
   const q=exam.qs[exam.i], n=exam.qs.length, answeredN=exam.qs.filter(x=>x.pick!==null).length;
   el.innerHTML=`<div class="exbar">
       <div class="exbar-top"><strong>Question ${exam.i+1} <span class="muted">of ${n}</span></strong>
+        <span class="tally"><b class="t-ok">✓ ${exam.qs.filter(x=>x.pick!==null&&x.pick===x.c.a).length}</b> <b class="t-no">✗ ${exam.qs.filter(x=>x.pick!==null&&x.pick!==x.c.a).length}</b></span>
         <span class="clock" id="exClock" title="${exam.limit?"Time left":"Time used"}"></span></div>
       <div class="prog"><i style="width:${answeredN/n*100}%"></i></div>
     </div>
@@ -631,7 +634,13 @@ function renderExamQuestion(el){
       <div class="qrow"><h2 class="q">${esc(q.c.q)}</h2>
         <button class="spk round" id="readQ" aria-label="Read the question and choices aloud" aria-pressed="false">${ICON_SPK}</button></div>
       ${termsHTML(q.c)}
-      <div class="opts">${q.opts.map((o,i)=>`<button class="opt${q.pick===o?" picked":""}" data-v="${esc(o)}" aria-pressed="${q.pick===o}"><span class="k">${"ABCD"[i]}</span><span>${esc(o)}</span></button>`).join("")}</div>
+      <div class="opts">${q.opts.map((o,i)=>{const cls=q.pick===null?"":o===q.c.a?" right":o===q.pick?" wrong":" dim";
+        return `<button class="opt${cls}" data-v="${esc(o)}" ${q.pick!==null?"disabled":""}><span class="k">${"ABCD"[i]}</span><span>${esc(o)}${q.pick===o&&o!==q.c.a?" <small>(your answer)</small>":""}</span></button>`;}).join("")}</div>
+      ${q.pick!==null?`<div class="result" id="exRes">
+        <div class="verdict ${q.pick===q.c.a?"ok":"no"}">${q.pick===q.c.a?"✓ Correct":"✗ Wrong"}</div>
+        ${q.pick===q.c.a?"":`<p class="expl">Correct answer: <strong>${esc(q.c.a)}</strong></p>`}
+        <p class="expl">${esc(q.c.e||"")}</p>
+        ${q.c.fig&&FIG[q.c.fig]?`<div class="fig">${FIG[q.c.fig]()}</div>`:""}</div>`:""}
       <div class="exnav sticky-act">
         <button class="btn ghost" id="exPrev" ${exam.i===0?"disabled":""}>← Back</button>
         ${exam.i<n-1?`<button class="btn" id="exNext">${q.pick===null?"Skip →":"Next →"}</button>`:`<button class="btn" id="exReview">Review & submit</button>`}
@@ -642,7 +651,8 @@ function renderExamQuestion(el){
       <p class="hint">Filled = answered · orange dot = flagged</p>`:""}
     <div class="row"><button class="btn ghost small danger" id="exQuit">Quit exam</button></div>`;
   tickExam();
-  el.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{q.pick=b.dataset.v; renderExamQuestion(el);});
+  el.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{ if(q.pick!==null) return; q.pick=b.dataset.v; renderExamQuestion(el);
+    const r=$("exRes"); if(r) r.scrollIntoView({behavior:"smooth",block:"nearest"}); });
   $("readQ").onclick=e=>say(q.c.q+" "+q.opts.map((o,i)=>"ABCD"[i]+". "+o+".").join(" "),false,e.currentTarget);
   el.querySelectorAll(".term").forEach(b=>b.onclick=()=>say(b.dataset.say,true,b));
   $("exFlag").onclick=()=>{q.flag=!q.flag; renderExamQuestion(el);};
@@ -839,7 +849,7 @@ patch(){
 relaxer(){
   return S(380,170,`<rect x="40" y="20" width="40" height="130" rx="6" fill="var(--fig-c)" opacity=".25"/><rect x="40" y="20" width="40" height="40" rx="6" fill="var(--fig-a)"/><line x1="20" y1="20" x2="100" y2="20" stroke="var(--fg)" stroke-width="3"/>${T(10,14,"Scalp",'class="t-muted"')}`+
   `${T(100,40,"New growth: relaxer goes HERE only",'style="font-weight:700"')}${T(100,56,"(keep ¼ to ½ inch off the scalp)",'class="t-muted"')}${T(100,104,"Previously relaxed: protective cream,",'style="font-weight:700"')}${T(100,120,"never overlap → breakage",'class="t-muted"')}`+
-  `${T(10,166,"Start on the most resistant area. Hydroxide + thio never mix → hair loss.",'style="font-weight:600"')}`);
+  `${T(10,166,"Start on the most resistant area. Hydroxide + thio → hair loss.",'style="font-weight:600"')}`);
 },
 wax(){
   return S(380,150,`<path d="M20 100 q10 -40 20 -60 M50 100 q10 -40 20 -60 M80 100 q10 -40 20 -60 M110 100 q10 -40 20 -60" stroke="var(--fig-c)" stroke-width="3" fill="none"/><line x1="10" y1="100" x2="150" y2="100" stroke="var(--fg)" stroke-width="2"/>`+
