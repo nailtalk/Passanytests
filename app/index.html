@@ -156,6 +156,27 @@ body.nospeech .term svg{display:none}
 .tally{font:600 .95rem var(--font-mono);display:flex;gap:10px}
 .t-ok{color:var(--good)} .t-no{color:var(--bad)}
 .pbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;border-radius:12px;background:var(--accent-soft);font-size:.9rem}
+.board{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.board.big{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}
+.board>div{display:flex;flex-direction:column;gap:2px;padding:6px 8px;border-radius:8px;background:var(--surface);border:1px solid var(--line);min-width:0}
+.board span{font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.board b{font:600 1.15rem var(--font-mono);font-variant-numeric:tabular-nums}
+.board.big b{font-size:1.6rem}
+.board .g b{color:var(--good)} .board .r b{color:var(--bad)}
+.board .g{border-color:color-mix(in srgb,var(--good) 40%,var(--line))} .board .r{border-color:color-mix(in srgb,var(--bad) 40%,var(--line))}
+.need{font-size:.86rem}
+.wronglist{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:8px}
+.wronglist li{padding-left:2px}
+.wronglist li::marker{font:600 .85rem var(--font-mono);color:var(--bad)}
+.wronglist a{color:var(--fg);font-weight:500;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+.wronglist span{display:block;font-size:.86rem;color:var(--good)}
+.ans-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
+.ans{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:10px;border:1.5px solid}
+.ans span{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.ans small{color:var(--muted);font-size:.85rem;line-height:1.4}
+.ans.ok{border-color:var(--good);background:var(--good-soft)} .ans.ok span{color:var(--good)}
+.ans.no{border-color:var(--bad);background:var(--bad-soft)} .ans.no span{color:var(--bad)}
+@media (max-width:520px){.board{grid-template-columns:repeat(3,1fr)}}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:99px;font-weight:600;font-size:.9rem;max-width:calc(100% - 32px)}
 .sync{font:500 .72rem var(--font-mono);color:var(--muted)}
 section{display:flex;flex-direction:column;gap:14px}
@@ -258,7 +279,7 @@ function lsSave(){try{localStorage.setItem(LS,JSON.stringify(state));}catch(e){}
 function save(){
   lsSave();
   if(!progRef) return;
-  const body={p:state.p,newDay:state.newDay,newPerDay:state.newPerDay,exams:state.exams||[]};
+  const body={p:state.p,newDay:state.newDay,newPerDay:state.newPerDay,exams:state.exams||[],lastWrong:state.lastWrong||[]};
   writing=writing.then(()=>progRef.set(body)).catch(()=>setSync("Couldn't save online, saved on this device"));
 }
 function saveDeck(){
@@ -278,7 +299,7 @@ async function connect(){
     const timer=setTimeout(()=>setSync("can't reach your saved progress yet"),10000);
     const [ps,ds]=await Promise.all([progRef.get(),deckRef.get()]);
     clearTimeout(timer);
-    if(ps.exists){const v=JSON.parse(JSON.stringify(ps.data())); state.p=v.p||{}; state.newDay=v.newDay||{d:"",n:0}; state.newPerDay=v.newPerDay||25; state.exams=v.exams||state.exams||[];}
+    if(ps.exists){const v=JSON.parse(JSON.stringify(ps.data())); state.p=v.p||{}; state.newDay=v.newDay||{d:"",n:0}; state.newPerDay=v.newPerDay||25; state.exams=v.exams||state.exams||[]; state.lastWrong=v.lastWrong||state.lastWrong||[];}
     else if(Object.keys(state.p).length){save();}
     if(ds.exists){state.custom=JSON.parse(JSON.stringify(ds.data().cards||[]));}
     else if(state.custom.length){saveDeck();}
@@ -312,10 +333,10 @@ function grade(card, correct){
 }
 
 let practice=null; // {q:[ids], total, right, wrong}
-function startPractice(missedOnly){
-  let ids=allCards().filter(c=>!missedOnly||(rec(c.id)&&rec(c.id)[4]>0)).map(c=>c.id);
+function startPractice(missedOnly, onlyIds, label){
+  let ids=onlyIds||allCards().filter(c=>!missedOnly||(rec(c.id)&&rec(c.id)[4]>0)).map(c=>c.id);
   if(!ids.length){toast(missedOnly?"No missed cards yet. Nice!":"No cards in the deck");return;}
-  practice={q:shuffle(ids),total:ids.length,right:0,wrong:0,missedOnly};
+  practice={q:shuffle(ids),total:ids.length,right:0,wrong:0,missedOnly,label:label||(missedOnly?"Missed cards":"Practice all")};
   answered=false; if(!$("study").hidden) refresh(); else $("tStudy").click();
   $("study").scrollIntoView({block:"start"});
 }
@@ -397,7 +418,7 @@ function renderStudy(){
 
 function showCard(card){
   current=card; answered=false; clearInterval(tickTimer);
-  const pb=practice?`<div class="pbar"><span><b>${practice.missedOnly?"Missed cards":"Practice all"}</b> · ${practice.total-new Set(practice.q).size} of ${practice.total} done · <span class="t-ok">✓ ${practice.right}</span> <span class="t-no">✗ ${practice.wrong}</span></span><button class="btn ghost small" id="endP">End practice</button></div>`:"";
+  const pb=practice?`<div class="pbar"><span><b>${esc(practice.label)}</b> · ${practice.total-new Set(practice.q).size} of ${practice.total} done · <span class="t-ok">✓ ${practice.right}</span> <span class="t-no">✗ ${practice.wrong}</span></span><button class="btn ghost small" id="endP">End practice</button></div>`:"";
   if(speakingBtn) stopSpeech();
   const st=status(card.id), r=rec(card.id);
   const label={new:"New",learning:"Relearning",review:"Review"}[st];
@@ -595,6 +616,105 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
 });
 let toastT; function toast(t){const el=$("toast"); el.textContent=t; el.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>el.hidden=true,2200);}
 
+/* ---------- what each common answer choice means ---------- */
+const DEF={
+"effleurage":"light, gliding strokes. Used to begin and end a massage.",
+"petrissage":"kneading: lifting, squeezing and pressing.",
+"friction":"deep rubbing, usually in circles.",
+"tapotement":"tapping or percussion.",
+"vibration":"rapid shaking of the body, shoulders and fingertips.",
+"cleaning":"removing dirt and debris with soap and water. The FIRST step, but it doesn't kill most germs.",
+"disinfection":"an EPA-registered chemical that kills MOST pathogens on tools and surfaces (not skin).",
+"sterilization":"kills ALL microbes, spores included (for example, an autoclave).",
+"sanitation":"an older word for cleaning: it lowers germs but doesn't kill them.",
+"antiseptic":"slows germs on SKIN. Not strong enough for tools.",
+"autoclave":"sterilizes with pressurized steam.",
+"dry heat sanitizer":"not an approved way to disinfect salon tools.",
+"ultraviolet rays":"a UV cabinet only stores clean tools. It doesn't disinfect or sterilize them.",
+"fumigation":"gas treatment. Not used in salons.",
+"temporary":"coats the outside of the hair, no developer, washes out in 1 shampoo.",
+"semi permanent":"deposits only, no developer, lasts several shampoos.",
+"demi permanent":"low-volume developer, no ammonia. Deposits but can't lift.",
+"permanent":"ammonia + developer. Can lift AND deposit in one step.",
+"strand test":"color or relaxer on one strand to check the result and timing.",
+"patch test":"a dab behind the ear or inside the elbow, 24–48 hours before, to check for allergy.",
+"acid wave":"gentle perm, lower pH, for porous or damaged hair.",
+"alkaline wave":"stronger perm (cold wave), higher pH, for resistant hair.",
+"cold wave":"an alkaline wave: too strong for damaged hair.",
+"high ph wave":"strong alkaline perm: too harsh for damaged hair.",
+"cuticle":"the outer scale layer of the hair. Chemicals enter here first.",
+"cortex":"the middle layer: color, strength and disulfide bonds.",
+"medulla":"the center core of the hair.",
+"dermal papilla":"at the bottom of the follicle, feeds the hair. Not part of the hair shaft.",
+"hyponychium":"the skin seal under the free edge.",
+"matrix":"where the nail grows from. Damage here deforms the nail.",
+"nail fold":"the skin folding around the sides of the nail.",
+"stratum corneum":"the top dead-cell layer of the skin.",
+"impetigo":"bacterial, contagious, honey-crust blisters.",
+"psoriasis":"dry, silvery, scaly patches. Not contagious.",
+"eczema":"itchy, red, inflamed skin. Not contagious.",
+"rosacea":"redness and flushing on the cheeks and nose.",
+"uva":"aging rays that go deep into the skin.",
+"uvb":"burning rays: sunburn and skin cancer.",
+"infrared":"heat rays.",
+"exfoliation":"removing dead cells from the skin's surface.",
+"desincrustation":"softens oil in the pores with galvanic current.",
+"anaphoresis":"pushes ALKALINE products into the skin (negative pole).",
+"cataphoresis":"pushes ACIDIC products into the skin (positive pole).",
+"epa":"registers disinfectants.",
+"osha":"workplace safety, including ventilation and SDS.",
+"fda":"cosmetics and drugs. Banned liquid MMA.",
+"cdc":"tracks disease. Doesn't regulate salons.",
+"astringent":"tightens pores and removes oil.",
+"moisturizer":"adds moisture and softens. This answer key also uses it to rebalance skin after a facial massage.",
+"cleanser":"removes makeup and dirt.",
+"exfoliant":"removes dead skin cells.",
+"shears":"make blunt, clean lines.",
+"razor":"makes soft, tapered, feathered ends.",
+"trimmers":"for outlines and necklines.",
+"vent":"open vents let air pass through, so the hair dries faster.",
+"boar":"natural bristles that smooth and add shine. Slow to dry hair.",
+"metal":"reacts with hair color: never mix color in metal.",
+"plastic":"safe for mixing color.",
+"glass":"safe for mixing color.",
+"porous hair":"absorbs too fast and unevenly, so it needs a filler.",
+"resistant hair":"absorbs slowly and needs longer processing, not a filler.",
+"thermal mask":"heats up by itself. Paraffin is the one you temperature-check.",
+"release form":"the client signs it to accept the risks of a service.",
+"intake form":"client info and health history, filled in before the first service.",
+"service record form":"notes what you did at each visit.",
+"neutralizing shampoo":"acid-balanced shampoo that stops a hydroxide relaxer.",
+"household bleach":"an EPA-registered disinfectant when mixed correctly.",
+"antibacterial soap":"for cleaning hands. Not a disinfectant.",
+"bacteria":"single-cell germs. Some cause impetigo or boils.",
+"a virus":"causes cold sores, warts, hepatitis or HIV. Not boils.",
+"a fungus":"causes ringworm and nail fungus.",
+"a parasite":"lice, scabies mites.",
+"itch mites":"the parasites that cause scabies.",
+"microorganisms":"too general. The specific cause of scabies is itch mites.",
+"held taut":"skin stretched firm, so the hair comes out cleanly with less pain.",
+"before each dip":"a new spatula every dip: no double-dipping.",
+"in the opposite direction of hair growth":"how you pull off a wax strip.",
+"in the same direction as hair growth":"how wax goes ON, and how you tweeze.",
+};
+function defOf(opt){
+  const k=opt.toLowerCase().replace(/[^a-z0-9 ]/g,"").trim();
+  if(DEF[k]) return DEF[k];
+  for(const key of Object.keys(DEF).sort((a,b)=>b.length-a.length)) if(new RegExp("\\b"+key+"\\b").test(k)) return DEF[key];
+  return null;
+}
+function whyBlock(c, pick){
+  const wrong=pick!==null&&pick!==c.a, dPick=wrong?defOf(pick):null, dRight=defOf(c.a);
+  return `<div class="why">
+    <div class="ans-grid">
+      ${pick===null?`<div class="ans no"><span>You</span><b>No answer</b></div>`:wrong?`<div class="ans no"><span>✗ Your answer</span><b>${esc(pick)}</b>${dPick?`<small>= ${esc(dPick)}</small>`:""}</div>`:""}
+      <div class="ans ok"><span>✓ Correct answer</span><b>${esc(c.a)}</b>${dRight&&!(c.e||"").toLowerCase().includes(dRight.slice(0,18).toLowerCase())?`<small>= ${esc(dRight)}</small>`:""}</div>
+    </div>
+    <span class="say-h">Why</span><p class="expl">${esc(c.e||"")}</p>
+    ${c.fig&&FIG[c.fig]?`<div class="fig">${FIG[c.fig]()}</div>`:""}
+  </div>`;
+}
+
 /* ---------- practice exam ---------- */
 const TOPICS=[
   ["Infection control & safety",/disinfect|steril|antiseptic|pathogen|bacteri|EPA|OSHA|SDS|Safety Data|autoclave|contagious|parasit|lice|scabies|ringworm|impetigo|boil|precaution|linens|gloves|glasses|bloodborne|foot spa|immers|contaminat|microb|infection|release form|first line of defense/i],
@@ -621,14 +741,15 @@ function renderExamSetup(el){
   const hist=(state.exams||[]).slice(-5).reverse();
   el.innerHTML=`<article class="card">
     <h2 class="q">Practice exam</h2>
-    <p class="hint">Questions come in random order. After each answer you see right away whether it's right or wrong, with the reason and a picture. At the end you get your score (passing target ${PASS}%), a breakdown by topic, and a review of every question.</p>
+    <p class="hint">Questions come in random order. After each answer you see right away whether it's right or wrong, with the reason and a picture. The scoreboard keeps count of correct, wrong and how many more you need for ${PASS}%. At the end you get a list of every wrong question to relearn.</p>
     <div class="pace"><span class="pace-label">Number of questions</span><div class="seg" id="exSize">${sizes.map((v,i)=>`<button data-v="${v}" aria-pressed="${i===1||sizes.length===1?"true":"false"}">${v===total?"All "+v:v}</button>`).join("")}</div></div>
     <div class="pace"><span class="pace-label">Timer</span><div class="seg" id="exTime">
       <button data-v="1" aria-pressed="true">On · 1 min per question</button><button data-v="0" aria-pressed="false">Off</button></div></div>
-    <div class="row"><button class="btn" id="exStart">Start exam</button></div>
+    <div class="row"><button class="btn" id="exStart">Start exam</button>${(state.lastWrong||[]).length?`<button class="btn ghost" id="exLast">Relearn ${state.lastWrong.length} wrong from last exam</button>`:""}</div>
     ${hist.length?`<div class="say"><span class="say-h">Recent scores</span><div class="hist">${hist.map(h=>`<span class="hchip ${h.s>=PASS?"pass":"fail"}">${h.s}% <small>${h.n} q · ${h.d}</small></span>`).join("")}</div></div>`:""}
   </article>`;
   ["exSize","exTime"].forEach(id=>el.querySelectorAll("#"+id+" button").forEach(b=>b.onclick=()=>{el.querySelectorAll("#"+id+" button").forEach(x=>x.setAttribute("aria-pressed",x===b));}));
+  if($("exLast")) $("exLast").onclick=()=>startPractice(false, state.lastWrong.filter(id=>allCards().some(c=>c.id===id)), "Relearn wrong answers");
   $("exStart").onclick=()=>{
     const n=+el.querySelector("#exSize [aria-pressed=true]").dataset.v, timed=el.querySelector("#exTime [aria-pressed=true]").dataset.v==="1";
     startExam(shuffle(allCards().filter(c=>c.o&&c.o.length>1)).slice(0,n),timed);
@@ -652,12 +773,21 @@ function tickExam(){
 }
 function fmtClock(ms){const s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return (h?h+":"+String(m).padStart(2,"0"):m)+":"+String(x).padStart(2,"0");}
 
+function scoreboard(){
+  const n=exam.qs.length, ok=exam.qs.filter(x=>x.pick!==null&&x.pick===x.c.a).length, bad=exam.qs.filter(x=>x.pick!==null&&x.pick!==x.c.a).length, left=n-ok-bad;
+  const need=Math.ceil(n*PASS/100), more=Math.max(0,need-ok), pct=ok+bad?Math.round(ok/(ok+bad)*100):0;
+  const msg=more===0?`<span class="t-ok">✓ Passed: ${ok} of ${n} correct (${PASS}% needs ${need})</span>`
+    :more>left?`<span class="t-no">Can't reach ${PASS}% this round: needs ${need} correct. Keep going, it's all practice.</span>`
+    :`Need <b>${more}</b> more correct to pass (${need} of ${n} = ${PASS}%)`;
+  return `<div class="board"><div><span>Total</span><b>${n}</b></div><div class="g"><span>Correct</span><b>${ok}</b></div><div class="r"><span>Wrong</span><b>${bad}</b></div><div><span>Left</span><b>${left}</b></div><div class="${pct>=PASS?"g":ok+bad?"r":""}"><span>Score so far</span><b>${pct}%</b></div></div>
+    <div class="need">${msg}</div>`;
+}
 function renderExamQuestion(el){
   const q=exam.qs[exam.i], n=exam.qs.length, answeredN=exam.qs.filter(x=>x.pick!==null).length;
   el.innerHTML=`<div class="exbar">
       <div class="exbar-top"><strong>Question ${exam.i+1} <span class="muted">of ${n}</span></strong>
-        <span class="tally"><b class="t-ok">✓ ${exam.qs.filter(x=>x.pick!==null&&x.pick===x.c.a).length}</b> <b class="t-no">✗ ${exam.qs.filter(x=>x.pick!==null&&x.pick!==x.c.a).length}</b></span>
         <span class="clock" id="exClock" title="${exam.limit?"Time left":"Time used"}"></span></div>
+      ${scoreboard()}
       <div class="prog"><i style="width:${answeredN/n*100}%"></i></div>
     </div>
     <article class="card">
@@ -670,9 +800,7 @@ function renderExamQuestion(el){
         return `<button class="opt${cls}" data-v="${esc(o)}" ${q.pick!==null?"disabled":""}><span class="k">${"ABCD"[i]}</span><span>${esc(o)}${q.pick===o&&o!==q.c.a?" <small>(your answer)</small>":""}</span></button>`;}).join("")}</div>
       ${q.pick!==null?`<div class="result" id="exRes">
         <div class="verdict ${q.pick===q.c.a?"ok":"no"}">${q.pick===q.c.a?"✓ Correct":"✗ Wrong"}</div>
-        ${q.pick===q.c.a?"":`<p class="expl">Correct answer: <strong>${esc(q.c.a)}</strong></p>`}
-        <p class="expl">${esc(q.c.e||"")}</p>
-        ${q.c.fig&&FIG[q.c.fig]?`<div class="fig">${FIG[q.c.fig]()}</div>`:""}</div>`:""}
+        ${whyBlock(q.c,q.pick)}</div>`:""}
       <div class="exnav sticky-act">
         <button class="btn ghost" id="exPrev" ${exam.i===0?"disabled":""}>← Back</button>
         ${exam.i<n-1?`<button class="btn" id="exNext">${q.pick===null?"Skip →":"Next →"}</button>`:`<button class="btn" id="exReview">Review & submit</button>`}
@@ -711,6 +839,7 @@ function submitExam(timeUp){
   clearInterval(examTimer);
   exam.done=true; exam.timeUp=timeUp; exam.used=Date.now()-exam.start; exam.filter="missed";
   const right=exam.qs.filter(x=>x.pick===x.c.a).length; exam.score=Math.round(right/exam.qs.length*100); exam.right=right;
+  state.lastWrong=exam.qs.filter(x=>x.pick!==x.c.a).map(x=>x.c.id);
   state.exams=(state.exams||[]).concat([{d:new Date().toLocaleDateString(undefined,{month:"short",day:"numeric"}),s:exam.score,n:exam.qs.length}]).slice(-20);
   save(); renderExam(); $("exam").scrollIntoView({block:"start"});
 }
@@ -720,28 +849,35 @@ function renderExamResults(el){
   const list=exam.filter==="missed"?missed:exam.qs;
   el.innerHTML=`<article class="card score ${pass?"pass":"fail"}">
       <div class="meta"><span class="chip ${pass?"review":""}">${pass?"Passed":"Not passed yet"}</span><span>${exam.timeUp?"Time ran out · ":""}${fmtClock(exam.used)} used</span></div>
-      <div class="bigscore"><b>${exam.score}%</b><span>${exam.right} of ${n} correct · passing target ${PASS}%</span></div>
+      <div class="bigscore"><b>${exam.score}%</b><span>${pass?"You passed. Keep it above "+PASS+"%.":"Passing needs "+Math.ceil(n*PASS/100)+" of "+n+" correct ("+PASS+"%). You need "+(Math.ceil(n*PASS/100)-exam.right)+" more."}</span></div>
+      <div class="board big"><div><span>Total questions</span><b>${n}</b></div><div class="g"><span>Correct</span><b>${exam.right}</b></div><div class="r"><span>Wrong</span><b>${missed.filter(x=>x.pick!==null).length}</b></div>${missed.some(x=>x.pick===null)?`<div class="r"><span>Not answered</span><b>${missed.filter(x=>x.pick===null).length}</b></div>`:""}</div>
       <div class="prog big"><i style="width:${exam.score}%"></i><em style="left:${PASS}%"></em></div>
+      ${missed.length?`<div class="say"><span class="say-h">Questions you got wrong (${missed.length}): study these</span>
+        <ol class="wronglist">${missed.map(x=>`<li><a href="#wq${exam.qs.indexOf(x)}">${esc(x.c.q)}</a><span>→ <b>${esc(x.c.a)}</b></span></li>`).join("")}</ol></div>`:""}
       <div class="say"><span class="say-h">By topic</span>
         <div class="topics">${Object.entries(by).sort((a,b)=>a[1][0]/a[1][1]-b[1][0]/b[1][1]).map(([t,[r,c]])=>{const p=Math.round(r/c*100);return `<div class="trow"><span>${esc(t)}</span><span class="tbar"><i style="width:${p}%" class="${p>=PASS?"ok":"no"}"></i></span><b>${r}/${c}</b></div>`;}).join("")}</div></div>
-      <div class="row">${missed.length?`<button class="btn" id="exDrill">Practice my ${missed.length} missed as flashcards</button><button class="btn ghost" id="exRetake">Retake missed only</button>`:""}<button class="btn ghost" id="exNew">New exam</button></div>
+      <div class="row">${missed.length?`<button class="btn" id="exDrill">Relearn my ${missed.length} wrong answers now</button><button class="btn ghost" id="exRetake">Retake wrong ones as a test</button>`:""}<button class="btn ghost" id="exNew">New exam</button></div>
+      ${missed.length?`<p class="hint">Relearn goes through each wrong question until you get it right. They also come back in Study 10 minutes later so they stick.</p>`:""}
     </article>
     <div class="row"><span class="pace-label">Review</span><div class="seg" id="exFilt"><button data-v="missed" aria-pressed="${exam.filter==="missed"}">Missed (${missed.length})</button><button data-v="all" aria-pressed="${exam.filter==="all"}">All ${n}</button></div></div>
     <div class="review">${list.length?list.map(x=>{const ok=x.pick===x.c.a, i=exam.qs.indexOf(x);
-      return `<article class="card rv ${ok?"ok":"no"}">
+      return `<article class="card rv ${ok?"ok":"no"}" id="wq${i}">
         <div class="meta"><span class="chip ${ok?"review":"learning"}">${ok?"Correct":"Missed"} · Q${i+1}</span><span>${esc(topicOf(x.c))}</span></div>
         <h3 class="q">${esc(x.c.q)}</h3>
         <div class="opts">${x.opts.map((o,j)=>`<div class="opt ${o===x.c.a?"right":o===x.pick?"wrong":"dim"}"><span class="k">${"ABCD"[j]}</span><span>${esc(o)}${o===x.pick?" <small>(your answer)</small>":""}</span></div>`).join("")}</div>
         ${x.pick===null?`<p class="expl" style="color:var(--bad)">Not answered.</p>`:""}
-        <div class="why"><span class="say-h">Why</span><p class="expl">${esc(x.c.e||"")}</p>${x.c.fig&&FIG[x.c.fig]?`<div class="fig">${FIG[x.c.fig]()}</div>`:""}</div>
+        ${termsHTML(x.c)}
+        ${whyBlock(x.c,x.pick)}
       </article>`;}).join(""):`<p class="hint">Nothing missed. Every answer was correct.</p>`}</div>`;
   el.querySelectorAll("#exFilt button").forEach(b=>b.onclick=()=>{exam.filter=b.dataset.v; renderExamResults(el);});
+  el.querySelectorAll(".wronglist a").forEach(a=>a.onclick=e=>{e.preventDefault(); exam.filter="missed"; const id=a.getAttribute("href").slice(1); renderExamResults(el); const t=$(id); if(t) t.scrollIntoView({behavior:"smooth",block:"start"});});
+  el.querySelectorAll(".rv .term").forEach(b=>b.onclick=()=>say(b.dataset.say,true,b));
   $("exNew").onclick=()=>{exam=null; renderExam();};
   if($("exRetake")) $("exRetake").onclick=()=>startExam(shuffle(missed.map(x=>x.c)),!!exam.limit);
   if($("exDrill")) $("exDrill").onclick=()=>{
     const now=Date.now();
     missed.forEach(x=>{const r=state.p[x.c.id]||[now,0,0,0,0]; state.p[x.c.id]=[now,0,Math.max(1,r[2]),r[3]+1,r[4]+1];});
-    save(); toast(missed.length+" missed questions are now due in Study"); $("tStudy").click();
+    save(); startPractice(false, missed.map(x=>x.c.id), "Relearn wrong answers");
   };
 }
 
